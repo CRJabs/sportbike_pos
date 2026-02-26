@@ -6,22 +6,25 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
   void addItem(Product product) {
-    // Check if the item is already in the cart
     final existingIndex =
         state.indexWhere((item) => item.product.id == product.id);
 
     if (existingIndex != -1) {
-      // Increase quantity if it exists
-      state = [
-        for (int i = 0; i < state.length; i++)
-          if (i == existingIndex)
-            state[i].copyWith(quantity: state[i].quantity + 1)
-          else
-            state[i]
-      ];
+      // Check if adding one more exceeds stock
+      if (state[existingIndex].quantity < product.stock) {
+        state = [
+          for (int i = 0; i < state.length; i++)
+            if (i == existingIndex)
+              state[i].copyWith(quantity: state[i].quantity + 1)
+            else
+              state[i]
+        ];
+      }
     } else {
-      // Add new item to cart
-      state = [...state, CartItem(product: product)];
+      // Only add if there is at least 1 in stock
+      if (product.stock > 0) {
+        state = [...state, CartItem(product: product)];
+      }
     }
   }
 
@@ -33,9 +36,9 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     state = [
       for (final item in state)
         if (item.product.id == productId)
+          // Ensure quantity stays between 1 and the product's maximum stock
           item.copyWith(
-              quantity: (item.quantity + delta)
-                  .clamp(1, 99)) // Prevents going below 1
+              quantity: (item.quantity + delta).clamp(1, item.product.stock))
         else
           item
     ];

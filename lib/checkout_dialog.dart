@@ -39,6 +39,9 @@ class _CheckoutDialogState extends ConsumerState<CheckoutDialog> {
       if (!mounted) return;
 
       // Success Reset Phase
+      ref.invalidate(detailedBikesProvider); // Refresh the Motorcycles table
+      ref.invalidate(
+          detailedAccessoriesProvider); // Refresh the Accessories table
       ref.read(cartProvider.notifier).clearCart(); // 1. Empty the cart
       ref.invalidate(
           inventoryProvider); // 2. Force the grid to fetch fresh stock numbers

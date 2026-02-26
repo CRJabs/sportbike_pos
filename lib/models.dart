@@ -4,6 +4,7 @@ class Product {
   final String subtitle; // e.g., "Panigale V4" or "Size M / Black"
   final double price;
   final bool isBike;
+  final int stock;
 
   Product({
     required this.id,
@@ -11,6 +12,7 @@ class Product {
     required this.subtitle,
     required this.price,
     this.isBike = false,
+    this.stock = 0,
   });
 }
 

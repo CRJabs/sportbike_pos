@@ -387,10 +387,21 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                   style: const TextStyle(color: Colors.white)),
               const SizedBox(width: 8),
               IconButton(
-                icon: const Icon(Icons.add, color: Colors.grey, size: 16),
-                onPressed: () => ref
-                    .read(cartProvider.notifier)
-                    .updateQuantity(item.product.id, 1),
+                // Visual Feedback: If the quantity in cart >= stock in DB, fade the icon
+                icon: Icon(
+                  Icons.add,
+                  size: 16,
+                  color: item.quantity >= item.product.stock
+                      ? Colors.white24 // Faded red/white when disabled
+                      : Colors.grey, // Normal color
+                ),
+                // Logical Feedback: If quantity >= stock, setting onPressed to null
+                // automatically disables the button in Flutter.
+                onPressed: item.quantity >= item.product.stock
+                    ? null
+                    : () => ref
+                        .read(cartProvider.notifier)
+                        .updateQuantity(item.product.id, 1),
                 constraints: const BoxConstraints(),
                 padding: EdgeInsets.zero,
               ),
