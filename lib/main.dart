@@ -1,10 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this
+import 'package:supabase_flutter/supabase_flutter.dart'; // Add this
+
 import 'pos_screen.dart';
 import 'inventory_screen.dart';
 import 'dashboard_screen.dart';
 
-void main() {
-  runApp(const MotoVaultApp());
+Future<void> main() async {
+  // 1. Ensure Flutter bindings are ready before async calls
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 2. Load Environment Variables safely
+  await dotenv.load(fileName: ".env");
+
+  // 3. Initialize Supabase Connection
+  await Supabase.initialize(
+    url: dotenv.get('SUPABASE_URL')!,
+    anonKey: dotenv.get('SUPABASE_ANON_KEY')!,
+  );
+
+  runApp(
+    const ProviderScope(
+      child: MotoVaultApp(),
+    ),
+  );
 }
 
 class MotoVaultApp extends StatelessWidget {
