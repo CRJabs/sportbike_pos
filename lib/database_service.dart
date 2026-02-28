@@ -31,6 +31,18 @@ final detailedAccessoriesProvider =
   return await ref.read(databaseProvider).fetchDetailedAccessories();
 });
 
+// Provides the KPI totals for today
+final dashboardStatsProvider =
+    FutureProvider<Map<String, dynamic>>((ref) async {
+  return await ref.read(databaseProvider).fetchDashboardStats();
+});
+
+// Provides the latest 10 transactions
+final recentTransactionsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return await ref.read(databaseProvider).fetchRecentTransactions();
+});
+
 // ==========================================
 // 2. DATABASE SERVICE CLASS
 // ==========================================
@@ -211,5 +223,43 @@ class DatabaseService {
       print('Image upload failed: $e');
       return null;
     }
+  }
+
+  // --- DASHBOARD ANALYTICS METHODS ---
+
+  Future<Map<String, dynamic>> fetchDashboardStats() async {
+    // Get the start of the current day in ISO8601 format to filter Supabase records
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day).toIso8601String();
+
+    // Fetch all sales orders created today
+    final response = await _supabase
+        .from('sales_orders')
+        .select('grand_total')
+        .gte('created_at', startOfDay);
+
+    final List orders = response as List;
+
+    double totalRevenue = 0;
+    for (var order in orders) {
+      totalRevenue += (order['grand_total'] as num).toDouble();
+    }
+
+    return {
+      'revenueToday': totalRevenue,
+      'ordersToday': orders.length,
+      'averageOrder': orders.isEmpty ? 0.0 : totalRevenue / orders.length,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRecentTransactions() async {
+    // Fetch the 10 most recent sales
+    final response = await _supabase
+        .from('sales_orders')
+        .select('id, created_at, grand_total, payment_type')
+        .order('created_at', ascending: false)
+        .limit(10);
+
+    return List<Map<String, dynamic>>.from(response);
   }
 }
