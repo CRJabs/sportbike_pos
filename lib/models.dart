@@ -5,15 +5,16 @@ class Product {
   final double price;
   final bool isBike;
   final int stock;
+  final String? imageUrl;
 
-  Product({
-    required this.id,
-    required this.name,
-    required this.subtitle,
-    required this.price,
-    this.isBike = false,
-    this.stock = 0,
-  });
+  Product(
+      {required this.id,
+      required this.name,
+      required this.subtitle,
+      required this.price,
+      this.isBike = false,
+      this.stock = 0,
+      this.imageUrl});
 }
 
 class CartItem {

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'database_service.dart';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -246,126 +248,329 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final sku = acc['sku'];
     final name = acc['products']['name'];
     final variant = acc['variant_name'];
+    final currentImageUrl =
+        acc['image_url']; // Grab the existing image if there is one
 
     final priceController =
         TextEditingController(text: acc['price'].toString());
     final stockController =
         TextEditingController(text: acc['stock_quantity'].toString());
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text('Edit $name', style: const TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(variant, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: priceController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                  labelText: 'Price (\$)',
-                  labelStyle: TextStyle(color: Colors.grey)),
-              style: const TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: stockController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                  labelText: 'Stock Quantity',
-                  labelStyle: TextStyle(color: Colors.grey)),
-              style: const TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary),
-            onPressed: () async {
-              final newPrice = double.tryParse(priceController.text) ?? 0.0;
-              final newStock = int.tryParse(stockController.text) ?? 0;
-
-              await ref
-                  .read(databaseProvider)
-                  .updateAccessory(sku, newPrice, newStock);
-
-              if (context.mounted) {
-                ref.invalidate(detailedAccessoriesProvider);
-                ref.invalidate(inventoryProvider); // Refresh POS too
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Save Changes',
-                style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditBikeDialog(Map<String, dynamic> bike) {
-    final vin = bike['vin_number'];
-    final modelName = bike['bike_models']['model_name'];
-    String currentStatus = bike['status'];
+    // Variables to hold the new image before we hit save
+    Uint8List? selectedImageBytes;
+    String? selectedImageName;
+    bool isUploading = false;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(builder: (context, setState) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          title: Text('Edit Status: $modelName',
-              style: const TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('VIN: $vin', style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 16),
-              DropdownButton<String>(
-                value: currentStatus,
-                dropdownColor: const Color(0xFF252525),
-                style: const TextStyle(color: Colors.white),
-                items: const [
-                  DropdownMenuItem(value: 'in_stock', child: Text('In Stock')),
-                  DropdownMenuItem(value: 'sold', child: Text('Sold')),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => currentStatus = value);
-                },
-              ),
-            ],
+          title:
+              Text('Edit $name', style: const TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(variant, style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 16),
+
+                // --- IMAGE UPLOADER UI ---
+                GestureDetector(
+                  onTap: () async {
+                    final picker = ImagePicker();
+                    // Pick an image from the gallery/computer
+                    final pickedFile =
+                        await picker.pickImage(source: ImageSource.gallery);
+
+                    if (pickedFile != null) {
+                      // Read it as bytes (works perfectly on Web, Windows, and Android)
+                      final bytes = await pickedFile.readAsBytes();
+                      setState(() {
+                        selectedImageBytes = bytes;
+                        selectedImageName = pickedFile.name;
+                      });
+                    }
+                  },
+                  child: Container(
+                    height: 150,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF252525),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: selectedImageBytes != null
+                        // Show the newly picked image preview
+                        ? Image.memory(selectedImageBytes!, fit: BoxFit.cover)
+                        : currentImageUrl != null
+                            // Show the existing database image
+                            ? Image.network(currentImageUrl, fit: BoxFit.cover)
+                            // Show upload placeholder
+                            : const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.cloud_upload,
+                                      color: Colors.grey, size: 40),
+                                  SizedBox(height: 8),
+                                  Text('Click to upload image',
+                                      style: TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: priceController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Price (\$)',
+                      labelStyle: TextStyle(color: Colors.grey)),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: stockController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Stock Quantity',
+                      labelStyle: TextStyle(color: Colors.grey)),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: isUploading ? null : () => Navigator.pop(context),
               child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary),
-              onPressed: () async {
-                await ref
-                    .read(databaseProvider)
-                    .updateBikeStatus(vin, currentStatus);
+              onPressed: isUploading
+                  ? null
+                  : () async {
+                      setState(() => isUploading = true);
 
-                if (context.mounted) {
-                  ref.invalidate(detailedBikesProvider);
-                  ref.invalidate(inventoryProvider);
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Save Changes',
-                  style: TextStyle(color: Colors.white)),
+                      final newPrice =
+                          double.tryParse(priceController.text) ?? 0.0;
+                      final newStock = int.tryParse(stockController.text) ?? 0;
+                      String? finalImageUrl;
+
+                      try {
+                        // 1. If an image was picked, upload it first
+                        if (selectedImageBytes != null &&
+                            selectedImageName != null) {
+                          finalImageUrl = await ref
+                              .read(databaseProvider)
+                              .uploadImage(
+                                  selectedImageName!, selectedImageBytes!);
+                        }
+
+                        // 2. Save everything to the database
+                        await ref.read(databaseProvider).updateAccessory(
+                            sku, newPrice, newStock,
+                            imageUrl: finalImageUrl);
+
+                        if (context.mounted) {
+                          ref.invalidate(detailedAccessoriesProvider);
+                          ref.invalidate(inventoryProvider);
+                          Navigator.pop(context);
+                        }
+                      } catch (e) {
+                        setState(() => isUploading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('Error saving: $e'),
+                            backgroundColor: Colors.red));
+                      }
+                    },
+              child: isUploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Save Changes',
+                      style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  void _showEditBikeDialog(Map<String, dynamic> bike) {
+    final vin = bike['vin_number'];
+    final modelId = bike['bike_models']['id']; // Grab the parent model ID
+    final brand = bike['bike_models']['brand'];
+    final modelName = bike['bike_models']['model_name'];
+    final currentImageUrl = bike['bike_models']['image_url'];
+
+    final priceController = TextEditingController(
+        text: bike['bike_models']['base_price'].toString());
+    String currentStatus = bike['status'].toString();
+
+    // Variables to hold the new image
+    Uint8List? selectedImageBytes;
+    String? selectedImageName;
+    bool isUploading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setState) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: Text('Edit $brand $modelName',
+              style: const TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('VIN: $vin', style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 16),
+
+                // --- IMAGE UPLOADER UI ---
+                GestureDetector(
+                  onTap: () async {
+                    final picker = ImagePicker();
+                    final pickedFile =
+                        await picker.pickImage(source: ImageSource.gallery);
+
+                    if (pickedFile != null) {
+                      final bytes = await pickedFile.readAsBytes();
+                      setState(() {
+                        selectedImageBytes = bytes;
+                        selectedImageName = pickedFile.name;
+                      });
+                    }
+                  },
+                  child: Container(
+                    height: 150,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF252525),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: selectedImageBytes != null
+                        ? Image.memory(selectedImageBytes!, fit: BoxFit.cover)
+                        : currentImageUrl != null
+                            ? Image.network(currentImageUrl, fit: BoxFit.cover)
+                            : const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.cloud_upload,
+                                      color: Colors.grey, size: 40),
+                                  SizedBox(height: 8),
+                                  Text('Click to upload image',
+                                      style: TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: priceController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Base Price (\$)',
+                      labelStyle: TextStyle(color: Colors.grey)),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 16),
+
+                // Status Dropdown instead of Stock Quantity
+                const Text('Status',
+                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: currentStatus,
+                  dropdownColor: const Color(0xFF252525),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white10)),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'in_stock', child: Text('In Stock')),
+                    DropdownMenuItem(value: 'sold', child: Text('Sold')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => currentStatus = value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isUploading ? null : () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary),
+              onPressed: isUploading
+                  ? null
+                  : () async {
+                      setState(() => isUploading = true);
+
+                      final newPrice =
+                          double.tryParse(priceController.text) ?? 0.0;
+                      String? finalImageUrl;
+
+                      try {
+                        // Upload image if a new one was selected
+                        if (selectedImageBytes != null &&
+                            selectedImageName != null) {
+                          finalImageUrl = await ref
+                              .read(databaseProvider)
+                              .uploadImage(
+                                  selectedImageName!, selectedImageBytes!);
+                        }
+
+                        // Save to both the bikes and bike_models tables
+                        await ref.read(databaseProvider).updateMotorcycle(
+                              vin: vin,
+                              modelId: modelId,
+                              status: currentStatus,
+                              price: newPrice,
+                              imageUrl: finalImageUrl,
+                            );
+
+                        if (context.mounted) {
+                          ref.invalidate(detailedBikesProvider);
+                          ref.invalidate(
+                              inventoryProvider); // Refreshes the POS register instantly
+                          Navigator.pop(context);
+                        }
+                      } catch (e) {
+                        setState(() => isUploading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('Error saving: $e'),
+                            backgroundColor: Colors.red));
+                      }
+                    },
+              child: isUploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('Save Changes',
+                      style: TextStyle(color: Colors.white)),
             ),
           ],
         );

@@ -502,22 +502,22 @@ class _ProductCardState extends ConsumerState<ProductCard> {
                     borderRadius:
                         BorderRadius.vertical(top: Radius.circular(7)),
                   ),
-                  child: AnimatedTheme(
-                    data: ThemeData(
-                      iconTheme: IconThemeData(
-                        // Make the icon light up red on hover too
-                        color: _isHovered
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey[600],
-                      ),
-                    ),
-                    child: Icon(
-                      widget.product.isBike
-                          ? Icons.motorcycle
-                          : Icons.shield_outlined,
-                      size: 40,
-                    ),
-                  ),
+                  // If we have an image URL, show it. Otherwise, show the icon.
+                  child: widget.product.imageUrl != null &&
+                          widget.product.imageUrl!.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(7)),
+                          child: Image.network(
+                            widget.product.imageUrl!,
+                            fit: BoxFit
+                                .cover, // Ensures the photo fills the box perfectly
+                            // Fallback if the URL is broken
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildFallbackIcon(),
+                          ),
+                        )
+                      : _buildFallbackIcon(),
                 ),
               ),
               Padding(
@@ -551,6 +551,23 @@ class _ProductCardState extends ConsumerState<ProductCard> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Helper method to draw the glowing icon if no image is available
+  Widget _buildFallbackIcon() {
+    return AnimatedTheme(
+      data: ThemeData(
+        iconTheme: IconThemeData(
+          color: _isHovered
+              ? Theme.of(context).colorScheme.primary
+              : Colors.grey[600],
+        ),
+      ),
+      child: Icon(
+        widget.product.isBike ? Icons.motorcycle : Icons.shield_outlined,
+        size: 40,
       ),
     );
   }

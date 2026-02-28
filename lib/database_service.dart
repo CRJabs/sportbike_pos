@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models.dart';
+import 'dart:typed_data';
 // Note: If your CartItem class is in cart_provider.dart instead of models.dart,
 // make sure to import 'cart_provider.dart' here as well.
 
@@ -40,10 +41,12 @@ class DatabaseService {
   // --- POS FETCH METHODS ---
 
   Future<Map<String, List<Product>>> fetchInventory() async {
-    // 1. Fetch Bikes (Joining 'bikes' with 'bike_models')
+    // 1. Fetch Bikes
     final bikesResponse = await _supabase
         .from('bikes')
-        .select('vin_number, bike_models(brand, model_name, base_price)')
+        // ADD image_url to the select query below:
+        .select(
+            'vin_number, bike_models(brand, model_name, base_price, image_url)')
         .eq('status', 'in_stock');
 
     List<Product> fetchedBikes = bikesResponse.map((row) {
@@ -54,15 +57,18 @@ class DatabaseService {
         subtitle: modelData['model_name'],
         price: (modelData['base_price'] as num).toDouble(),
         isBike: true,
-        stock: 1, // A specific VIN is a single physical unit
+        stock: 1,
+        imageUrl: modelData['image_url'], // <--- ADD THIS LINE
       );
     }).toList();
 
-    // 2. Fetch Accessories (Joining 'product_variants' with 'products')
+    // 2. Fetch Accessories
     final accessoriesResponse = await _supabase
         .from('product_variants')
-        .select('id, sku, variant_name, price, stock_quantity, products(name)')
-        .gt('stock_quantity', 0); // Only fetch items with stock
+        // ADD image_url to the select query below:
+        .select(
+            'id, sku, variant_name, price, stock_quantity, image_url, products(name)')
+        .gt('stock_quantity', 0);
 
     List<Product> fetchedAccessories = accessoriesResponse.map((row) {
       final parentProduct = row['products'];
@@ -72,7 +78,8 @@ class DatabaseService {
         subtitle: row['variant_name'],
         price: (row['price'] as num).toDouble(),
         isBike: false,
-        stock: row['stock_quantity'] as int, // Pull actual database stock
+        stock: row['stock_quantity'] as int,
+        imageUrl: row['image_url'], // <--- ADD THIS LINE
       );
     }).toList();
 
@@ -117,8 +124,9 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> fetchDetailedBikes() async {
     final response = await _supabase
         .from('bikes')
+        // We added 'id' and 'image_url' inside the bike_models() block below:
         .select(
-            'vin_number, engine_number, color, status, warehouse_location, bike_models(brand, model_name, base_price)')
+            'vin_number, engine_number, color, status, warehouse_location, bike_models(id, brand, model_name, base_price, image_url)')
         .order('vin_number', ascending: true);
     return List<Map<String, dynamic>>.from(response);
   }
@@ -133,16 +141,39 @@ class DatabaseService {
 
   // --- INVENTORY MANAGEMENT WRITE METHODS ---
 
-  Future<void> updateAccessory(String sku, double price, int stock) async {
-    await _supabase
-        .from('product_variants')
-        .update({'price': price, 'stock_quantity': stock}).eq('sku', sku);
+  // --- UPDATE THIS EXISTING METHOD ---
+  Future<void> updateAccessory(String sku, double price, int stock,
+      {String? imageUrl}) async {
+    // We create a map of updates. If an image was uploaded, we include it.
+    final updates = <String, dynamic>{'price': price, 'stock_quantity': stock};
+
+    if (imageUrl != null) {
+      updates['image_url'] = imageUrl;
+    }
+
+    await _supabase.from('product_variants').update(updates).eq('sku', sku);
   }
 
-  Future<void> updateBikeStatus(String vin, String newStatus) async {
+  Future<void> updateMotorcycle({
+    required String vin,
+    required String modelId,
+    required String status,
+    required double price,
+    String? imageUrl,
+  }) async {
+    // 1. Update the specific unit's status in the 'bikes' table
     await _supabase
         .from('bikes')
-        .update({'status': newStatus}).eq('vin_number', vin);
+        .update({'status': status}).eq('vin_number', vin);
+
+    // 2. Update the parent model's price and image in the 'bike_models' table
+    final modelUpdates = <String, dynamic>{'base_price': price};
+
+    if (imageUrl != null) {
+      modelUpdates['image_url'] = imageUrl;
+    }
+
+    await _supabase.from('bike_models').update(modelUpdates).eq('id', modelId);
   }
 
   Future<void> addMotorcycle({
@@ -158,5 +189,27 @@ class DatabaseService {
       'color': color,
       'status': 'in_stock',
     });
+  }
+
+  // --- ADD THIS NEW UPLOAD METHOD ---
+  Future<String?> uploadImage(String fileName, Uint8List fileBytes) async {
+    try {
+      // Create a unique file path so uploads don't overwrite each other
+      final filePath =
+          'inventory/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      // Upload the binary data to the 'product-images' bucket
+      await _supabase.storage.from('product-images').uploadBinary(
+            filePath,
+            fileBytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      // Return the public URL so we can save it to the SQL database
+      return _supabase.storage.from('product-images').getPublicUrl(filePath);
+    } catch (e) {
+      print('Image upload failed: $e');
+      return null;
+    }
   }
 }
