@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'pos_screen.dart';
 import 'inventory_screen.dart';
@@ -40,7 +41,11 @@ class MotoVaultApp extends StatelessWidget {
           primary: Color(0xFFD32F2F),
           surface: Color(0xFF1A1A1A),
         ),
-        fontFamily: 'Inter',
+        textTheme:
+            GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme).apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
       ),
       // The AuthRouter decides which screen to show based on the login state
       home: const AuthRouter(),

@@ -16,7 +16,7 @@ class _CheckoutDialogState extends ConsumerState<CheckoutDialog> {
   bool _isLoading = false;
 
   final currencyFormatter =
-      NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+      NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   Future<void> _processPayment() async {
     setState(() => _isLoading = true);

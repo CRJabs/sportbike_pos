@@ -21,7 +21,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
 
   // Formatter for currency
   final currencyFormatter =
-      NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+      NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   // 2. Add a controller to manage the text field visually
   final TextEditingController _searchController = TextEditingController();
@@ -446,7 +446,7 @@ class ProductCard extends ConsumerStatefulWidget {
 class _ProductCardState extends ConsumerState<ProductCard> {
   bool _isHovered = false;
   final currencyFormatter =
-      NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+      NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   @override
   Widget build(BuildContext context) {

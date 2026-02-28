@@ -56,21 +56,23 @@ class DatabaseService {
     // 1. Fetch Bikes
     final bikesResponse = await _supabase
         .from('bikes')
-        // ADD image_url to the select query below:
         .select(
-            'vin_number, bike_models(brand, model_name, base_price, image_url)')
+            'vin_number, color, image_url, bike_models(brand, model_name, base_price)')
         .eq('status', 'in_stock');
 
     List<Product> fetchedBikes = bikesResponse.map((row) {
       final modelData = row['bike_models'];
+      final color = row['color'] ?? 'Unknown Color'; // Grab the color
+
       return Product(
         id: row['vin_number'],
         name: modelData['brand'],
-        subtitle: modelData['model_name'],
+        subtitle:
+            '${modelData['model_name']} - $color', // <--- Now displays: "Ninja ZX-10R - Green"
         price: (modelData['base_price'] as num).toDouble(),
         isBike: true,
         stock: 1,
-        imageUrl: modelData['image_url'], // <--- ADD THIS LINE
+        imageUrl: row['image_url'], // <--- Pulls the specific unit's photo
       );
     }).toList();
 
@@ -136,9 +138,9 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> fetchDetailedBikes() async {
     final response = await _supabase
         .from('bikes')
-        // We added 'id' and 'image_url' inside the bike_models() block below:
+        // Move image_url OUT of the bike_models() block and into the main bikes table selection
         .select(
-            'vin_number, engine_number, color, status, warehouse_location, bike_models(id, brand, model_name, base_price, image_url)')
+            'vin_number, engine_number, color, status, warehouse_location, image_url, bike_models(id, brand, model_name, base_price)')
         .order('vin_number', ascending: true);
     return List<Map<String, dynamic>>.from(response);
   }
@@ -173,55 +175,84 @@ class DatabaseService {
     required double price,
     String? imageUrl,
   }) async {
-    // 1. Update the specific unit's status in the 'bikes' table
-    await _supabase
-        .from('bikes')
-        .update({'status': status}).eq('vin_number', vin);
-
-    // 2. Update the parent model's price and image in the 'bike_models' table
-    final modelUpdates = <String, dynamic>{'base_price': price};
-
+    // 1. Update the specific unit's status AND image in the 'bikes' table
+    final bikeUpdates = <String, dynamic>{'status': status};
     if (imageUrl != null) {
-      modelUpdates['image_url'] = imageUrl;
+      bikeUpdates['image_url'] = imageUrl;
     }
+    await _supabase.from('bikes').update(bikeUpdates).eq('vin_number', vin);
 
-    await _supabase.from('bike_models').update(modelUpdates).eq('id', modelId);
+    // 2. Update the parent model's price in the 'bike_models' table
+    await _supabase
+        .from('bike_models')
+        .update({'base_price': price}).eq('id', modelId);
   }
 
+  // Add a new Motorcycle to inventory
   Future<void> addMotorcycle({
     required String vin,
     required String engineNo,
     required String modelId,
     required String color,
+    String? imageUrl,
   }) async {
-    await _supabase.from('bikes').insert({
+    final bikeData = <String, dynamic>{
       'vin_number': vin,
       'engine_number': engineNo,
       'model_id': modelId,
       'color': color,
       'status': 'in_stock',
-    });
+    };
+
+    // Attach the image directly to this specific bike unit
+    if (imageUrl != null) {
+      bikeData['image_url'] = imageUrl;
+    }
+
+    await _supabase.from('bikes').insert(bikeData);
+  }
+
+  // Add a new Accessory/Gear to inventory
+  Future<void> addAccessory({
+    required String sku,
+    required String productId,
+    required String variantName,
+    required double price,
+    required int stock,
+    String? imageUrl,
+  }) async {
+    final data = {
+      'sku': sku,
+      'product_id': productId,
+      'variant_name': variantName,
+      'price': price,
+      'stock_quantity': stock,
+    };
+
+    if (imageUrl != null) {
+      data['image_url'] = imageUrl;
+    }
+
+    await _supabase.from('product_variants').insert(data);
   }
 
   // --- ADD THIS NEW UPLOAD METHOD ---
   Future<String?> uploadImage(String fileName, Uint8List fileBytes) async {
     try {
-      // Create a unique file path so uploads don't overwrite each other
       final filePath =
           'inventory/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-      // Upload the binary data to the 'product-images' bucket
       await _supabase.storage.from('product-images').uploadBinary(
             filePath,
             fileBytes,
             fileOptions: const FileOptions(upsert: true),
           );
 
-      // Return the public URL so we can save it to the SQL database
       return _supabase.storage.from('product-images').getPublicUrl(filePath);
     } catch (e) {
-      print('Image upload failed: $e');
-      return null;
+      // INSTEAD OF RETURNING NULL, WE THROW THE ERROR
+      // This forces the red SnackBar to appear in your UI if something breaks
+      throw Exception('Supabase Storage Error: $e');
     }
   }
 

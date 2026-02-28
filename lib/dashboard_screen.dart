@@ -12,7 +12,7 @@ class DashboardScreen extends ConsumerWidget {
     final transactionsAsync = ref.watch(recentTransactionsProvider);
 
     final currencyFormatter =
-        NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+        NumberFormat.currency(symbol: '₱', decimalDigits: 2);
     final dateFormatter = DateFormat('MMM dd, yyyy - hh:mm a');
 
     return Padding(
@@ -20,14 +20,14 @@ class DashboardScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Analytics Dashboard',
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white)),
-          const Text('Real-time overview of today\'s performance',
-              style: TextStyle(color: Colors.grey, fontSize: 14)),
-          const SizedBox(height: 24),
+          // const Text('Analytics Dashboard',
+          //     style: TextStyle(
+          //         fontSize: 24,
+          //         fontWeight: FontWeight.bold,
+          //         color: Colors.white)),
+          // const Text('Real-time overview of today\'s performance',
+          //     style: TextStyle(color: Colors.grey, fontSize: 14)),
+          // const SizedBox(height: 24),
 
           // --- KPI CARDS ROW ---
           statsAsync.when(
