@@ -1,201 +1,254 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'cart_provider.dart';
+// import 'package:printing/printing.dart';
+// import 'package:pdf/pdf.dart';
+
+import 'models.dart';
+import 'local_database_service.dart';
+// import 'receipt_generator.dart';
 import 'database_service.dart';
 
 class CheckoutDialog extends ConsumerStatefulWidget {
-  const CheckoutDialog({super.key});
+  final List<CartItem> items;
+  const CheckoutDialog({super.key, required this.items});
 
   @override
   ConsumerState<CheckoutDialog> createState() => _CheckoutDialogState();
 }
 
 class _CheckoutDialogState extends ConsumerState<CheckoutDialog> {
-  String _selectedPaymentMethod = 'cash'; // Default payment method
-  bool _isLoading = false;
+  String _selectedMethod = 'CASH';
+  final TextEditingController _cashGivenController = TextEditingController();
+  bool _isProcessing = false;
 
-  final currencyFormatter =
-      NumberFormat.currency(symbol: '₱', decimalDigits: 2);
-
-  Future<void> _processPayment() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final cartItems = ref.read(cartProvider);
-      final subtotal = ref.read(cartSubtotalProvider);
-      final vat = ref.read(cartVatProvider);
-      final grandTotal = ref.read(cartTotalProvider);
-
-      // Call the Supabase RPC via our database service
-      await ref.read(databaseProvider).checkout(
-            subtotal: subtotal,
-            vatAmount: vat,
-            grandTotal: grandTotal,
-            paymentType: _selectedPaymentMethod,
-            cartItems: cartItems,
-          );
-
-      if (!mounted) return;
-
-      // Success Reset Phase
-      ref.invalidate(detailedBikesProvider); // Refresh the Motorcycles table
-      ref.invalidate(
-          detailedAccessoriesProvider); // Refresh the Accessories table
-      ref.read(cartProvider.notifier).clearCart(); // 1. Empty the cart
-      ref.invalidate(
-          inventoryProvider); // 2. Force the grid to fetch fresh stock numbers
-
-      Navigator.of(context).pop(true); // Close the dialog and return success
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Checkout failed: $e'), backgroundColor: Colors.red),
-      );
-    }
+  @override
+  void dispose() {
+    _cashGivenController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final grandTotal = ref.watch(cartTotalProvider);
+    final currencyFormatter =
+        NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
-    return Dialog(
+    double subtotal = 0;
+    for (var item in widget.items) {
+      subtotal += (item.product.price * item.quantity);
+    }
+
+    double vatAmount = subtotal * 0.12;
+    double grandTotal = subtotal + vatAmount;
+    double cashGiven = double.tryParse(_cashGivenController.text) ?? 0.0;
+    double change = cashGiven - grandTotal;
+
+    return AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        width: 450,
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Complete Payment',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
-
-            // Total Display
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                  color: const Color(0xFF252525),
-                  borderRadius: BorderRadius.circular(8)),
-              child: Column(
+      title: const Text('Complete Checkout',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Order Summary',
+                  style: TextStyle(color: Colors.grey, fontSize: 14)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF252525),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white10)),
+                child: Column(
+                  children: widget.items.map((item) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                              child: Text(
+                                  '${item.quantity}x ${item.product.name}',
+                                  style: const TextStyle(color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis)),
+                          Text(
+                              currencyFormatter
+                                  .format(item.product.price * item.quantity),
+                              style: const TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('Subtotal:', style: TextStyle(color: Colors.grey)),
+                Text(currencyFormatter.format(subtotal),
+                    style: const TextStyle(color: Colors.white))
+              ]),
+              const SizedBox(height: 4),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('VAT (12%):', style: TextStyle(color: Colors.grey)),
+                Text(currencyFormatter.format(vatAmount),
+                    style: const TextStyle(color: Colors.white))
+              ]),
+              const Divider(color: Colors.white10, height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Amount Due',
-                      style: TextStyle(color: Colors.grey, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Text(currencyFormatter.format(grandTotal),
+                  const Text('GRAND TOTAL:',
                       style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold)),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18)),
+                  Text(currencyFormatter.format(grandTotal),
+                      style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18)),
                 ],
               ),
-            ),
-            const SizedBox(height: 32),
-
-            const Text('Payment Method',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-
-            // Payment Options
-            Row(
-              children: [
-                _buildPaymentOption('Cash', 'cash', Icons.money),
-                const SizedBox(width: 12),
-                _buildPaymentOption(
-                    'Bank Transfer', 'bank_transfer', Icons.account_balance),
-                const SizedBox(width: 12),
-                _buildPaymentOption(
-                    'Financing', 'financing', Icons.real_estate_agent),
-              ],
-            ),
-            const SizedBox(height: 40),
-
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Colors.grey)),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _processPayment,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 32, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2))
-                      : const Text('Confirm & Pay',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentOption(String label, String value, IconData icon) {
-    final isSelected = _selectedPaymentMethod == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedPaymentMethod = value),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
-                : const Color(0xFF252525),
-            border: Border.all(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.transparent),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            children: [
-              Icon(icon,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey,
-                  size: 28),
+              const SizedBox(height: 24),
+              const Text('Payment Method',
+                  style: TextStyle(color: Colors.grey, fontSize: 14)),
               const SizedBox(height: 8),
-              Text(label,
-                  style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey,
-                      fontSize: 12,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal),
-                  textAlign: TextAlign.center),
+              DropdownButtonFormField<String>(
+                value: _selectedMethod,
+                dropdownColor: const Color(0xFF252525),
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                    border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white10)),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                items: const [
+                  DropdownMenuItem(value: 'CASH', child: Text('Cash')),
+                  DropdownMenuItem(
+                      value: 'BANK_TRANSFER', child: Text('Bank Transfer')),
+                  DropdownMenuItem(
+                      value: 'INHOUSE_FINANCING',
+                      child: Text('In-House Financing')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedMethod = value;
+                      _cashGivenController.clear();
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              if (_selectedMethod == 'CASH') ...[
+                TextField(
+                  controller: _cashGivenController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Cash Given (₱)',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white10))),
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (val) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Change Due:',
+                        style: TextStyle(color: Colors.grey)),
+                    Text(
+                        change >= 0
+                            ? currencyFormatter.format(change)
+                            : '₱0.00',
+                        style: TextStyle(
+                            color: change >= 0
+                                ? Colors.greenAccent
+                                : Colors.redAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16)),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ),
+      actions: [
+        TextButton(
+            onPressed: _isProcessing ? null : () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+          onPressed: _isProcessing || (_selectedMethod == 'CASH' && change < 0)
+              ? null
+              : () async {
+                  setState(() => _isProcessing = true);
+
+                  try {
+                    // 1. Save directly to local SQLite Database
+                    await LocalDatabaseService().saveOfflineCheckout(
+                      subtotal: subtotal,
+                      vatAmount: vatAmount,
+                      grandTotal: grandTotal,
+                      paymentType: _selectedMethod,
+                      cartItems: widget.items,
+                    );
+
+                    if (!context.mounted) return;
+
+                    // // 2. Trigger the native Windows Print Menu
+                    // await Printing.layoutPdf(
+                    //   name: 'Receipt_${DateTime.now().millisecondsSinceEpoch}',
+                    //   onLayout: (PdfPageFormat format) async =>
+                    //       ReceiptGenerator.generateReceipt(
+                    //     cartItems: widget.items,
+                    //     subtotal: subtotal,
+                    //     vat: vatAmount,
+                    //     total: grandTotal,
+                    //     paymentType: _selectedMethod,
+                    //   ),
+                    // );
+
+                    if (!context.mounted) return;
+
+                    // 3. Refresh ALL tables so POS, Inventory, and Dashboard update instantly
+                    ref.invalidate(inventoryProvider);
+                    ref.invalidate(detailedBikesProvider);
+                    ref.invalidate(detailedAccessoriesProvider);
+                    ref.invalidate(dashboardStatsProvider);
+                    ref.invalidate(recentTransactionsProvider);
+
+                    Navigator.of(context).pop(true);
+                  } catch (e) {
+                    setState(() => _isProcessing = false);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Checkout Error: $e'),
+                        backgroundColor: Colors.red));
+                  }
+                },
+          child: _isProcessing
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2))
+              : const Text('Confirm Payment',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 }

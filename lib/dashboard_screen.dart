@@ -20,14 +20,15 @@ class DashboardScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // const Text('Analytics Dashboard',
-          //     style: TextStyle(
-          //         fontSize: 24,
-          //         fontWeight: FontWeight.bold,
-          //         color: Colors.white)),
-          // const Text('Real-time overview of today\'s performance',
-          //     style: TextStyle(color: Colors.grey, fontSize: 14)),
-          // const SizedBox(height: 24),
+          const Text('Analytics Dashboard',
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
+          const Text(
+              'Real-time overview of today\'s performance (Offline Supported)',
+              style: TextStyle(color: Colors.grey, fontSize: 14)),
+          const SizedBox(height: 24),
 
           // --- KPI CARDS ROW ---
           statsAsync.when(
@@ -38,28 +39,22 @@ class DashboardScreen extends ConsumerWidget {
             error: (e, _) => SizedBox(
                 height: 120,
                 child: Center(
-                    child: Text('Error loading stats: $e',
+                    child: Text('Error: $e',
                         style: const TextStyle(color: Colors.red)))),
             data: (stats) {
               return Row(
                 children: [
                   _buildKpiCard(
-                      context,
                       'Revenue Today',
                       currencyFormatter.format(stats['revenueToday']),
                       Icons.attach_money,
                       Colors.greenAccent),
                   const SizedBox(width: 16),
-                  _buildKpiCard(
-                      context,
-                      'Orders Today',
-                      stats['ordersToday'].toString(),
-                      Icons.receipt_long,
-                      Colors.blueAccent),
+                  _buildKpiCard('Orders Today', stats['ordersToday'].toString(),
+                      Icons.receipt_long, Colors.blueAccent),
                   const SizedBox(width: 16),
                   _buildKpiCard(
-                      context,
-                      'Average Order Value',
+                      'Average Order',
                       currencyFormatter.format(stats['averageOrder']),
                       Icons.analytics_outlined,
                       Colors.purpleAccent),
@@ -89,14 +84,13 @@ class DashboardScreen extends ConsumerWidget {
                 loading: () => const Center(
                     child: CircularProgressIndicator(color: Colors.red)),
                 error: (e, _) => Center(
-                    child: Text('Error loading transactions: $e',
+                    child: Text('Error: $e',
                         style: const TextStyle(color: Colors.red))),
                 data: (transactions) {
-                  if (transactions.isEmpty) {
+                  if (transactions.isEmpty)
                     return const Center(
                         child: Text('No transactions yet today.',
                             style: TextStyle(color: Colors.grey)));
-                  }
 
                   return SingleChildScrollView(
                     child: DataTable(
@@ -111,9 +105,10 @@ class DashboardScreen extends ConsumerWidget {
                         DataColumn(label: Text('Total Amount')),
                       ],
                       rows: transactions.map((tx) {
-                        // Shorten the UUID for cleaner display
-                        final shortId =
-                            tx['id'].toString().substring(0, 8).toUpperCase();
+                        final shortId = tx['id']
+                            .toString()
+                            .substring(4, 12)
+                            .toUpperCase(); // Trim "REC_"
                         final paymentType = tx['payment_type']
                             .toString()
                             .replaceAll('_', ' ')
@@ -129,8 +124,8 @@ class DashboardScreen extends ConsumerWidget {
                           DataCell(_buildPaymentBadge(paymentType)),
                           DataCell(Text(
                               currencyFormatter.format(tx['grand_total']),
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.primary,
+                              style: const TextStyle(
+                                  color: Colors.redAccent,
                                   fontWeight: FontWeight.bold))),
                         ]);
                       }).toList(),
@@ -145,29 +140,24 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
-  Widget _buildKpiCard(BuildContext context, String title, String value,
-      IconData icon, Color iconColor) {
+  Widget _buildKpiCard(
+      String title, String value, IconData icon, Color iconColor) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white10),
-        ),
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10)),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: iconColor, size: 28),
-            ),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, color: iconColor, size: 28)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -176,15 +166,13 @@ class DashboardScreen extends ConsumerWidget {
                   Text(title,
                       style: const TextStyle(color: Colors.grey, fontSize: 14)),
                   const SizedBox(height: 8),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(value,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -203,10 +191,9 @@ class DashboardScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        border: Border.all(color: color.withOpacity(0.5)),
-        borderRadius: BorderRadius.circular(12),
-      ),
+          color: color.withOpacity(0.1),
+          border: Border.all(color: color.withOpacity(0.5)),
+          borderRadius: BorderRadius.circular(12)),
       child: Text(method,
           style: TextStyle(
               color: color, fontSize: 10, fontWeight: FontWeight.bold)),

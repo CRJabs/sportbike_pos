@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'local_database_service.dart';
+import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'pos_screen.dart';
 import 'inventory_screen.dart';
@@ -14,16 +17,32 @@ import 'dashboard_screen.dart';
 // This tracks who is logged in: null (guest), 'cashier', or 'admin'
 final authRoleProvider = StateProvider<String?>((ref) => null);
 
-Future<void> main() async {
+void main() async {
+  // 1. This MUST be the first line
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
+  // 2. Load the .env file BEFORE trying to read any keys
   await dotenv.load(fileName: ".env");
 
+  // 3. Now it is safe to initialize Supabase
   await Supabase.initialize(
-    url: dotenv.get('SUPABASE_URL')!,
-    anonKey: dotenv.get('SUPABASE_ANON_KEY')!,
+    url: dotenv.get('SUPABASE_URL'),
+    anonKey: dotenv.get('SUPABASE_ANON_KEY'),
   );
 
-  runApp(const ProviderScope(child: MotoVaultApp()));
+  // 4. Start the auto-sync and run the app
+  LocalDatabaseService().startAutoSync();
+
+  runApp(
+    const ProviderScope(
+      child: MotoVaultApp(),
+    ),
+  );
 }
 
 class MotoVaultApp extends StatelessWidget {
